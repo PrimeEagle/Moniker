@@ -3,11 +3,15 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Wordprocessing;
 using System.Text;
+using System.Text.RegularExpressions;
 
-namespace WordSplitter
+namespace WordUtil
 {
     public static class WordUtils
     {
+        private static Dictionary<string, string> uniqueTagMappings = new Dictionary<string, string>();
+
+
         public static void Split(string fixedSourceFile, string sourceFile, string outputDirectory, string styleName)
         {
             string file = Path.GetFileNameWithoutExtension(sourceFile);
@@ -48,7 +52,6 @@ namespace WordSplitter
                     }
                 }
 
-                // Save last section
                 if (start != null && counter > 0)
                 {
                     string newFileName = $"{outputDirectory}\\{(counter).ToString().PadLeft(3, '0')}-{file}-{section}.docx";
@@ -59,14 +62,13 @@ namespace WordSplitter
 
         private static void SaveSection(WordprocessingDocument originalDoc, string newFileName, Paragraph start, Paragraph end)
         {
-            originalDoc.Save();  // Save the original document before performing the copy operations
+            originalDoc.Save();
             Thread.Sleep(5000);
             using (WordprocessingDocument newDoc = WordprocessingDocument.Create(newFileName, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
             {
                 MainDocumentPart mainPart = newDoc.AddMainDocumentPart();
                 mainPart.Document = new Document(new Body());
 
-                // Copy all namespace declarations from the original document to the new document.
                 foreach (var ns in originalDoc.MainDocumentPart.Document.NamespaceDeclarations)
                 {
                     mainPart.Document.AddNamespaceDeclaration(ns.Key, ns.Value);
@@ -93,7 +95,6 @@ namespace WordSplitter
                     }
                 }
 
-                // Copy all other parts from original document to new document
                 CopyAllParts(originalDoc.MainDocumentPart, mainPart);
 
                 mainPart.Document.Save();
@@ -104,7 +105,7 @@ namespace WordSplitter
             Thread.Sleep(1500);
 
             var tempFileName = newFileName + ".tmp.docx";
-            if(File.Exists(tempFileName))
+            if (File.Exists(tempFileName))
             {
                 File.Delete(tempFileName);
             }
@@ -114,7 +115,7 @@ namespace WordSplitter
             File.Delete(tempFileName);
         }
 
-        public static void CopyAllParts(OpenXmlPart originalPart, OpenXmlPart newPart)
+        private static void CopyAllParts(OpenXmlPart originalPart, OpenXmlPart newPart)
         {
             using (Stream stream = originalPart.GetStream(FileMode.Open))
             using (MemoryStream memStream = new MemoryStream())
@@ -131,7 +132,7 @@ namespace WordSplitter
             foreach (IdPartPair partPair in originalPart.Parts)
             {
                 OpenXmlPart originalChildPart = partPair.OpenXmlPart;
-                OpenXmlPart newChildPart = newPart.AddPart(originalChildPart, partPair.RelationshipId); // Copy relationship ID
+                OpenXmlPart newChildPart = newPart.AddPart(originalChildPart, partPair.RelationshipId);
                 CopyAllParts(originalChildPart, newChildPart);
             }
 
@@ -148,32 +149,22 @@ namespace WordSplitter
 
         public static void ResaveDocument(string sourceFile, string targetFile)
         {
-            // Create a new Word application.
             Microsoft.Office.Interop.Word.Application wordApp = new Microsoft.Office.Interop.Word.Application();
-            wordApp.Visible = false;  // Set to false to make Word run in the background
-
-            // Open the document.
+            wordApp.Visible = false;
             Microsoft.Office.Interop.Word.Document doc = wordApp.Documents.Open(sourceFile);
-
-            // Save the document. This can help fix minor issues.
             object fileFormat = Microsoft.Office.Interop.Word.WdSaveFormat.wdFormatXMLDocument;
             doc.SaveAs2(targetFile, fileFormat);
-
-            // Close the document and quit Word.
             doc.Close();
             wordApp.Quit();
         }
 
-        private static bool ValidateDocument(string filename)
+        public static bool ValidateDocument(string filename)
         {
-            // Initialize the OpenXML Validator
             OpenXmlValidator validator = new OpenXmlValidator();
             int count = 0;
 
-            // Open the Word document.
             using (WordprocessingDocument wordDocument = WordprocessingDocument.Open(filename, true))
             {
-                // Validate the Word document and capture the validation errors.
                 foreach (ValidationErrorInfo error in validator.Validate(wordDocument))
                 {
                     count++;
@@ -196,8 +187,116 @@ namespace WordSplitter
             return count == 0;
         }
 
-        public static void ReplaceFontWithStyle(string sourceFile, string font, string style, string styleFont, string styleColor, double? styleSize, bool styleBold, bool styleItalic)
+        public static void CreateParagraphStyle(StyleDefinitionsPart stylesPart, string style, string styleFont = null, string styleColor = null, double? styleSize = null, bool styleBold = false, bool styleItalic = false)
         {
+
+            string styleId = style;
+            Style existingStyle = stylesPart.Styles.Elements<Style>()
+                                    .FirstOrDefault(s => s.StyleId != null && s.StyleId.Value.Equals(styleId));
+
+            if (existingStyle == null)
+            {
+                Style newStyle = new Style()
+                {
+                    StyleId = styleId,
+                    StyleName = new StyleName() { Val = styleId },
+                };
+
+                if (!string.IsNullOrEmpty(styleFont) || styleSize.HasValue || !string.IsNullOrEmpty(styleColor) || styleBold || styleItalic)
+                {
+                    newStyle.StyleRunProperties = new StyleRunProperties();
+
+                    if (!string.IsNullOrEmpty(styleFont))
+                    {
+                        newStyle.StyleRunProperties.RunFonts = new RunFonts();
+                        newStyle.StyleRunProperties.RunFonts.Ascii = styleFont;
+                    }
+
+                    if (styleSize.HasValue)
+                    {
+                        newStyle.StyleRunProperties.FontSize = new FontSize();
+                        newStyle.StyleRunProperties.FontSize.Val = (styleSize.Value * 2.0d).ToString();
+                    }
+
+                    if (!string.IsNullOrEmpty(styleColor))
+                    {
+                        newStyle.StyleRunProperties.Color = new Color();
+                        newStyle.StyleRunProperties.Color.Val = styleColor;
+                    }
+
+                    if (styleBold)
+                    {
+                        newStyle.StyleRunProperties.Bold = new Bold();
+                    }
+
+                    if (styleItalic)
+                    {
+                        newStyle.StyleRunProperties.Italic = new Italic();
+                    }
+                }
+
+                stylesPart.Styles.AppendChild(newStyle);
+                stylesPart.Styles.Save();
+            }
+        }
+
+        public static void CreateCharacterStyle(StyleDefinitionsPart stylesPart, string style, string styleFont = null, string styleColor = null, double? styleSize = null, bool styleBold = false, bool styleItalic = false)
+        {
+            string styleId = style;
+            Style existingStyle = stylesPart.Styles.Elements<Style>()
+                .FirstOrDefault(s => s.StyleId != null && s.StyleId.Value.Equals(styleId));
+
+            if (existingStyle == null)
+            {
+                Style newStyle = new Style()
+                {
+                    StyleId = styleId,
+                    StyleName = new StyleName() { Val = styleId },
+                    Type = StyleValues.Character
+                };
+
+                if (!string.IsNullOrEmpty(styleFont) || styleSize.HasValue || !string.IsNullOrEmpty(styleColor) || styleBold || styleItalic)
+                {
+                    newStyle.StyleRunProperties = new StyleRunProperties();
+
+                    if (!string.IsNullOrEmpty(styleFont))
+                    {
+                        newStyle.StyleRunProperties.RunFonts = new RunFonts();
+                        newStyle.StyleRunProperties.RunFonts.Ascii = styleFont;
+                    }
+
+                    if (styleSize.HasValue)
+                    {
+                        newStyle.StyleRunProperties.FontSize = new FontSize();
+                        newStyle.StyleRunProperties.FontSize.Val = (styleSize.Value * 2.0d).ToString();
+                    }
+
+                    if (!string.IsNullOrEmpty(styleColor))
+                    {
+                        newStyle.StyleRunProperties.Color = new Color();
+                        newStyle.StyleRunProperties.Color.Val = styleColor;
+                    }
+
+                    if (styleBold)
+                    {
+                        newStyle.StyleRunProperties.Bold = new Bold();
+                    }
+
+                    if (styleItalic)
+                    {
+                        newStyle.StyleRunProperties.Italic = new Italic();
+                    }
+                }
+
+                stylesPart.Styles.AppendChild(newStyle);
+                stylesPart.Styles.Save();
+            }
+        }
+
+        public static void ReplaceFontWithStyle(string sourceFile, string font, string style)
+        {
+
+
             using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(sourceFile, true))
             {
                 MainDocumentPart mainPart = wordDoc.MainDocumentPart;
@@ -214,54 +313,7 @@ namespace WordSplitter
                     stylesPart = mainPart.StyleDefinitionsPart;
                 }
 
-                string styleId = style;
-                Style existingStyle = stylesPart.Styles.Elements<Style>()
-                    .FirstOrDefault(s => s.StyleId != null && s.StyleId.Value.Equals(styleId));
-
-                if (existingStyle == null)
-                {
-                    Style newStyle = new Style()
-                    {
-                        StyleId = styleId,
-                        StyleName = new StyleName() { Val = styleId },
-                    };
-
-                    if (!string.IsNullOrEmpty(styleFont) || styleSize.HasValue || !string.IsNullOrEmpty(styleColor) || styleBold || styleItalic)
-                    {
-                        newStyle.StyleRunProperties = new StyleRunProperties();
-
-                        if (!string.IsNullOrEmpty(styleFont))
-                        {
-                            newStyle.StyleRunProperties.RunFonts = new RunFonts();
-                            newStyle.StyleRunProperties.RunFonts.Ascii = styleFont;
-                        }
-
-                        if (styleSize.HasValue)
-                        {
-                            newStyle.StyleRunProperties.FontSize = new FontSize();
-                            newStyle.StyleRunProperties.FontSize.Val = (styleSize.Value * 2.0d).ToString();
-                        }
-
-                        if (!string.IsNullOrEmpty(styleColor))
-                        {
-                            newStyle.StyleRunProperties.Color = new Color();
-                            newStyle.StyleRunProperties.Color.Val = styleColor;
-                        }
-
-                        if (styleBold)
-                        {
-                            newStyle.StyleRunProperties.Bold = new Bold();
-                        }
-
-                        if (styleItalic)
-                        {
-                            newStyle.StyleRunProperties.Italic = new Italic();
-                        }
-                    }
-
-                    stylesPart.Styles.AppendChild(newStyle);
-                    stylesPart.Styles.Save();
-                }
+                WordUtils.GetOrCreateParagraphStyle(stylesPart, style);
 
                 foreach (Paragraph para in mainPart.Document.Body.OfType<Paragraph>())
                 {
@@ -297,7 +349,6 @@ namespace WordSplitter
             {
                 var body = wordDoc.MainDocumentPart.Document.Body;
 
-                // Collect all tables first
                 List<Table> tables = new List<Table>(body.Descendants<Table>());
 
                 foreach (var tbl in tables)
@@ -315,14 +366,9 @@ namespace WordSplitter
                     }
                     tableText.Length--;  // Removes the last |
                     tableText.Append("|END_TABLE");
-
-                    // Create the new paragraph
                     Paragraph newPara = new Paragraph(new Run(new Text(tableText.ToString())));
 
-                    // Insert the new paragraph after the table's parent
                     tbl.Parent.InsertAfter(newPara, tbl);
-
-                    // Remove the original table
                     tbl.Remove();
                 }
 
@@ -331,44 +377,133 @@ namespace WordSplitter
             }
         }
 
-        public static void UpdateCrossReferences(string inputFile)
+        public static void ProcessCrossReferences(string filePath, string tableCaptionStyleName, string figureCaptionStyleName, string xRefStyleName)
         {
-            using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(inputFile, true))
+            using (WordprocessingDocument doc = WordprocessingDocument.Open(filePath, true))
             {
-                var body = wordDoc.MainDocumentPart.Document.Body;
+                var body = doc.MainDocumentPart.Document.Body;
 
-                // Collect all tables first
-                List<Table> tables = new List<Table>(body.Descendants<Table>());
+                ProcessContentTags(body, "Table", tableCaptionStyleName); 
+                ProcessContentTags(body, "Figure", figureCaptionStyleName);
+                ProcessXRefs(doc, xRefStyleName);
 
-                foreach (var tbl in tables)
-                {
-                    StringBuilder tableText = new StringBuilder("START_TABLE|");
-
-                    foreach (var row in tbl.Descendants<TableRow>())
-                    {
-                        foreach (var cell in row.Descendants<TableCell>())
-                        {
-                            tableText.AppendFormat("{0}^", cell.InnerText);
-                        }
-                        tableText.Length--;  // Removes the last comma
-                        tableText.Append("|");
-                    }
-                    tableText.Length--;  // Removes the last |
-                    tableText.Append("|END_TABLE");
-
-                    // Create the new paragraph
-                    Paragraph newPara = new Paragraph(new Run(new Text(tableText.ToString())));
-
-                    // Insert the new paragraph after the table's parent
-                    tbl.Parent.InsertAfter(newPara, tbl);
-
-                    // Remove the original table
-                    tbl.Remove();
-                }
-
-                wordDoc.Save();
-                Thread.Sleep(3000);
+                doc.MainDocumentPart.Document.Save();
             }
+        }
+
+        private static void ProcessContentTags(Body body, string contentType, string styleName)
+        {
+            string tagPattern = $@"\[{contentType}:(.*?):(.*?)(?::(.*?))?\]";
+
+            foreach (var para in body.Descendants<Paragraph>())
+            {
+                var match = Regex.Match(para.InnerText, tagPattern);
+                if (match.Success)
+                {
+                    string uniqueTag = match.Groups[1].Value;
+                    string shortDescription = match.Groups[2].Value;
+                    string longDescription = match.Groups[3].Value;
+
+                    para.RemoveAllChildren<Run>();
+
+                    string replacedContent = $"{contentType} ###: {shortDescription}";
+                    para.AppendChild(new Run(new Text(replacedContent)));
+
+                    if (!string.IsNullOrEmpty(styleName))
+                    {
+                        para.ParagraphProperties = new ParagraphProperties(new ParagraphStyleId() { Val = styleName });
+                    }
+
+                    uniqueTagMappings.Add(uniqueTag, replacedContent);
+                }
+            }
+        }
+
+        private static void ProcessXRefs(WordprocessingDocument doc, string xRefStyleName)
+        {
+            var body = doc.MainDocumentPart.Document.Body;
+
+            foreach (var para in body.Descendants<Paragraph>())
+            {
+                if (para.InnerText.Contains("[XRef:"))
+                {
+                    string paraText = para.InnerText;
+                    var match = Regex.Match(paraText, @"\[XRef:(.*?):(.*?)\]");
+                    if (match.Success)
+                    {
+                        var uniqueTag = match.Groups[1].Value;
+                        var options = match.Groups[2].Value.Split(',');
+
+                        if (uniqueTagMappings.TryGetValue(uniqueTag, out var refText))
+                        {
+                            var captionText = options.Contains("name") ? refText : "";
+                            var pageText = options.Contains("page") ? " on page ###" : "";
+
+                            paraText = paraText.Replace(match.Value, captionText + pageText);
+
+                            para.RemoveAllChildren<Run>();
+                            para.AppendChild(new Run(new Text(paraText)));
+
+                            if (!string.IsNullOrEmpty(xRefStyleName))
+                            {
+                                para.Descendants<Run>().First().RunProperties = new RunProperties(new RunStyle() { Val = xRefStyleName });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static Style GetOrCreateParagraphStyle(StyleDefinitionsPart stylesPart, string styleName)
+        {
+            Style style = stylesPart.Styles.Elements<Style>().FirstOrDefault(s => s.StyleId == styleName);
+
+            if (style == null)
+            {
+                CreateParagraphStyle(stylesPart, styleName);
+
+                stylesPart.Styles.Append(style);
+                stylesPart.Styles.Save();
+
+                style = stylesPart.Styles.Elements<Style>().FirstOrDefault(s => s.StyleId == styleName);
+            }
+
+            return style;
+        }
+
+        private static Style GetOrCreateCharacterStyle(StyleDefinitionsPart stylesPart, string styleName)
+        {
+            Style style = stylesPart.Styles.Elements<Style>().FirstOrDefault(s => s.StyleId == styleName);
+
+            if (style == null)
+            {
+                CreateCharacterStyle(stylesPart, styleName);
+
+                stylesPart.Styles.Append(style);
+                stylesPart.Styles.Save();
+
+                style = stylesPart.Styles.Elements<Style>().FirstOrDefault(s => s.StyleId == styleName);
+            }
+
+            return style;
+        }
+
+        private static void ReplaceParagraphText(Paragraph para, string newText)
+        {
+            para.RemoveAllChildren<Run>();
+            para.AppendChild(new Run(new Text(newText)));
+        }
+
+        private static void ApplyParagraphStyleToParagraph(WordprocessingDocument doc, string styleId, Paragraph para)
+        {
+            para.RemoveAllChildren<ParagraphStyleId>();
+            para.AppendChild(new ParagraphStyleId() { Val = styleId });
+        }
+
+        private static void ApplyCharacterStyleToRun(string styleId, Run run)
+        {
+            run.RemoveAllChildren<RunStyle>();
+            run.AppendChild(new RunStyle() { Val = styleId });
         }
     }
 }
