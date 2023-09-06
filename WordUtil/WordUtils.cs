@@ -14,6 +14,8 @@ namespace WordUtil
 
         public static void Split(string fixedSourceFile, string sourceFile, string outputDirectory, string styleName)
         {
+            Console.WriteLine($"splitting document on style '{styleName}'...");
+
             string file = Path.GetFileNameWithoutExtension(sourceFile);
 
             if (!Directory.Exists(outputDirectory))
@@ -149,6 +151,8 @@ namespace WordUtil
 
         public static void ResaveDocument(string sourceFile, string targetFile)
         {
+            Console.WriteLine($"re-saving document '{Path.GetFileName(sourceFile)}'...");
+
             Microsoft.Office.Interop.Word.Application wordApp = new Microsoft.Office.Interop.Word.Application();
             wordApp.Visible = false;
             Microsoft.Office.Interop.Word.Document doc = wordApp.Documents.Open(sourceFile);
@@ -160,6 +164,8 @@ namespace WordUtil
 
         public static bool ValidateDocument(string filename)
         {
+            Console.WriteLine($"validating document...");
+
             OpenXmlValidator validator = new OpenXmlValidator();
             int count = 0;
 
@@ -189,6 +195,7 @@ namespace WordUtil
 
         public static void CreateParagraphStyle(StyleDefinitionsPart stylesPart, string style, string styleFont = null, string styleColor = null, double? styleSize = null, bool styleBold = false, bool styleItalic = false)
         {
+            Console.WriteLine($"creating paragraph style '{style}'...");
 
             string styleId = style;
             Style existingStyle = stylesPart.Styles.Elements<Style>()
@@ -242,6 +249,8 @@ namespace WordUtil
 
         public static void CreateCharacterStyle(StyleDefinitionsPart stylesPart, string style, string styleFont = null, string styleColor = null, double? styleSize = null, bool styleBold = false, bool styleItalic = false)
         {
+            Console.WriteLine($"creating character style '{style}'...");
+
             string styleId = style;
             Style existingStyle = stylesPart.Styles.Elements<Style>()
                 .FirstOrDefault(s => s.StyleId != null && s.StyleId.Value.Equals(styleId));
@@ -295,7 +304,7 @@ namespace WordUtil
 
         public static void ReplaceFontWithStyle(string sourceFile, string font, string style)
         {
-
+            Console.WriteLine($"replacing font '{font}' with style '{style}'...");
 
             using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(sourceFile, true))
             {
@@ -345,6 +354,8 @@ namespace WordUtil
 
         public static void ReplaceTables(string inputFile)
         {
+            Console.WriteLine($"replacing tables with custom tags...");
+
             using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(inputFile, true))
             {
                 var body = wordDoc.MainDocumentPart.Document.Body;
@@ -379,13 +390,15 @@ namespace WordUtil
 
         public static void ProcessCrossReferences(string filePath, string tableCaptionStyleName, string figureCaptionStyleName, string xRefStyleName)
         {
+            Console.WriteLine($"processing cross-references with table style '{tableCaptionStyleName}', figure style '{figureCaptionStyleName}', and cross-reference style '{xRefStyleName}'...");
+
             using (WordprocessingDocument doc = WordprocessingDocument.Open(filePath, true))
             {
                 var body = doc.MainDocumentPart.Document.Body;
 
                 ProcessContentTags(body, "Table", tableCaptionStyleName); 
                 ProcessContentTags(body, "Figure", figureCaptionStyleName);
-                ProcessXRefs(doc, xRefStyleName);
+                ProcessXRefs(doc, xRefStyleName, ":", ".");
 
                 doc.MainDocumentPart.Document.Save();
             }
@@ -401,12 +414,12 @@ namespace WordUtil
                 if (match.Success)
                 {
                     string uniqueTag = match.Groups[1].Value;
-                    string shortDescription = match.Groups[2].Value;
-                    string longDescription = match.Groups[3].Value;
+                    string name = match.Groups[2].Value;
+                    string description = match.Groups[3].Value;
 
                     para.RemoveAllChildren<Run>();
 
-                    string replacedContent = $"{contentType} ###: {shortDescription}";
+                    string replacedContent = $"{contentType} ###: {name}";
                     para.AppendChild(new Run(new Text(replacedContent)));
 
                     if (!string.IsNullOrEmpty(styleName))
@@ -414,12 +427,13 @@ namespace WordUtil
                         para.ParagraphProperties = new ParagraphProperties(new ParagraphStyleId() { Val = styleName });
                     }
 
-                    uniqueTagMappings.Add(uniqueTag, replacedContent);
+                    var info = $"{contentType} ###:{name}:{description}";
+                    uniqueTagMappings.Add(uniqueTag, info);
                 }
             }
         }
 
-        private static void ProcessXRefs(WordprocessingDocument doc, string xRefStyleName)
+        private static void ProcessXRefs(WordprocessingDocument doc, string xRefStyleName, string tableDelimiter = null, string figureDelimiter = null)
         {
             var body = doc.MainDocumentPart.Document.Body;
 
@@ -436,10 +450,22 @@ namespace WordUtil
 
                         if (uniqueTagMappings.TryGetValue(uniqueTag, out var refText))
                         {
-                            var captionText = options.Contains("name") ? refText : "";
-                            var pageText = options.Contains("page") ? " on page ###" : "";
+                            var refParts = refText.Split(":");
+                            var label = refParts[0];
+                            var name = refParts[1];
+                            var desc = refParts[2];
 
-                            paraText = paraText.Replace(match.Value, captionText + pageText);
+                            string output = label;
+                            var delimiter = ":";
+                            if (label.ToLower().Contains("table") && !string.IsNullOrEmpty(tableDelimiter)) { delimiter = tableDelimiter; }
+                            if (label.ToLower().Contains("figure") && !string.IsNullOrEmpty(figureDelimiter)) { delimiter = figureDelimiter; }
+
+                            if (options.Contains("name")) { output += $"{delimiter} {name}"; }
+                            if (options.Contains("desc") && !options.Contains("name")) { output += $"{delimiter} {desc}"; }
+                            if (options.Contains("desc") && options.Contains("name")) { output += $" ({desc})"; }
+                            if (options.Contains("page")) { output += $" on page ###"; }
+                            
+                            paraText = paraText.Replace(match.Value, output);
 
                             para.RemoveAllChildren<Run>();
                             para.AppendChild(new Run(new Text(paraText)));

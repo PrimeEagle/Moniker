@@ -12,12 +12,14 @@ namespace WordUtil
                 var param = PerformCommon(args);
 
                 WordUtils.Split(param.FixedSourceFile, param.SourceFile, param.OutputDirectory, param.SplitStyleName);
+                Console.WriteLine("done");
             }
             else if (args.Length >= 7 && args[0] == "rfs" && args.Contains("-i") && args.Contains("-f") && args.Contains("-s"))
             {
                 var param = PerformCommon(args);
 
                 WordUtils.ReplaceFontWithStyle(param.FixedSourceFile, param.ReplaceFont, param.Style);
+                Console.WriteLine("done");
             }
             else if (args.Length == 5 && args[0] == "rfs" && args.Contains("-i") && args.Contains("-m"))
             {
@@ -35,6 +37,7 @@ namespace WordUtil
                         WordUtils.ReplaceFontWithStyle(param.FixedSourceFile, param.ReplaceFont, param.Style);
                     }
                 }
+                Console.WriteLine("done");
             }
             else if (args.Length >= 5 && args[0] == "cps" && args.Contains("-i") && args.Contains("-s"))
             {
@@ -59,6 +62,7 @@ namespace WordUtil
                     WordUtils.CreateParagraphStyle(stylesPart, param.Style, param.StyleFont, param.StyleColor, param.StyleSize, param.StyleBold, param.StyleItalic);
                     stylesPart.Styles.Save();
                 }
+                Console.WriteLine("done");
             }
             else if (args.Length >= 5 && args[0] == "ccs" && args.Contains("-i") && args.Contains("-s"))
             {
@@ -83,18 +87,21 @@ namespace WordUtil
                     WordUtils.CreateCharacterStyle(stylesPart, param.Style, param.StyleFont, param.StyleColor, param.StyleSize, param.StyleBold, param.StyleItalic);
                     stylesPart.Styles.Save();
                 }
+                Console.WriteLine("done");
             }
             else if (args.Length == 3 && args[0] == "ttg" && args.Contains("-i"))
             {
                 var param = PerformCommon(args);
 
                 WordUtils.ReplaceTables(param.FixedSourceFile);
+                Console.WriteLine("done");
             }
             else if (args.Length == 3 && args[0] == "cref" && args.Contains("-i") && args.Contains("-tcs") && args.Contains("-fgs") && args.Contains("-xrs"))
             {
                 var param = PerformCommon(args);
 
                 WordUtils.ProcessCrossReferences(param.FixedSourceFile, param.TableCaptionStyleName, param.FigureCaptionStyleName, param.XRefStyleName);
+                Console.WriteLine("done");
             }
             else if(args.Length == 9 && args[0] == "batch" && args.Contains("-i") && args.Contains("-o") && args.Contains("-s") && args.Contains("-m"))
             {
@@ -139,6 +146,7 @@ namespace WordUtil
                 
                 WordUtils.ProcessCrossReferences(param.FixedSourceFile, "Table Caption", "Figure Caption", "XRef");
                 WordUtils.Split(param.FixedSourceFile, param.SourceFile, param.OutputDirectory, param.SplitStyleName);
+                Console.WriteLine("done");
             }
             else
             {
