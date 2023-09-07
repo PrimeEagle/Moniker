@@ -144,7 +144,7 @@ namespace WordUtil
                     stylesPart.Styles.Save();
                 }
                 
-                WordUtils.ProcessCrossReferences(param.FixedSourceFile, "Table Caption", "Figure Caption", "XRef");
+                //WordUtils.ProcessCrossReferences(param.FixedSourceFile, "Table Caption", "Figure Caption", "XRef");
                 WordUtils.Split(param.FixedSourceFile, param.SourceFile, param.OutputDirectory, param.SplitStyleName);
                 Console.WriteLine("done");
             }

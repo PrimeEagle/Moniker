@@ -2,15 +2,18 @@
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Wordprocessing;
+using Microsoft.VisualBasic.FileIO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace WordUtil
 {
     public static class WordUtils
     {
-        private static Dictionary<string, string> uniqueTagMappings = new Dictionary<string, string>();
-
+        private static Dictionary<string, Paragraph> uniqueTagMappings = new Dictionary<string, Paragraph>();
+        private static int bookmarkId = 1;
 
         public static void Split(string fixedSourceFile, string sourceFile, string outputDirectory, string styleName)
         {
@@ -428,7 +431,7 @@ namespace WordUtil
                     }
 
                     var info = $"{contentType} ###:{name}:{description}";
-                    uniqueTagMappings.Add(uniqueTag, info);
+                    uniqueTagMappings.Add(uniqueTag, para);
                 }
             }
         }
@@ -448,12 +451,17 @@ namespace WordUtil
                         var uniqueTag = match.Groups[1].Value;
                         var options = match.Groups[2].Value.Split(',');
 
-                        if (uniqueTagMappings.TryGetValue(uniqueTag, out var refText))
+                        if (uniqueTagMappings.TryGetValue(uniqueTag, out var refPara))
                         {
+                            var refText = refPara.InnerText;
                             var refParts = refText.Split(":");
                             var label = refParts[0];
                             var name = refParts[1];
-                            var desc = refParts[2];
+                            string desc = null;
+                            if (refParts.Count() > 2)
+                            {
+                                desc = refParts[2];
+                            }
 
                             string output = label;
                             var delimiter = ":";
@@ -463,12 +471,20 @@ namespace WordUtil
                             if (options.Contains("name")) { output += $"{delimiter} {name}"; }
                             if (options.Contains("desc") && !options.Contains("name")) { output += $"{delimiter} {desc}"; }
                             if (options.Contains("desc") && options.Contains("name")) { output += $" ({desc})"; }
-                            if (options.Contains("page")) { output += $" on page ###"; }
-                            
-                            paraText = paraText.Replace(match.Value, output);
+                            if (options.Contains("page")) { output += $" on page #"; }
 
-                            para.RemoveAllChildren<Run>();
-                            para.AppendChild(new Run(new Text(paraText)));
+                            AddBookmark(refPara, $"B-{uniqueTag}", bookmarkId++);
+
+                            foreach (var run in para.Descendants<Run>())
+                            {
+                                if (run.InnerText.Contains(match.Value))
+                                {
+                                    run.GetFirstChild<Text>().Text = run.GetFirstChild<Text>().Text.Replace(match.Value, string.Empty);
+                                    break;
+                                }
+                            }
+
+                            AddCrossReference(para, output, $"B-{uniqueTag}");
 
                             if (!string.IsNullOrEmpty(xRefStyleName))
                             {
@@ -478,6 +494,62 @@ namespace WordUtil
                     }
                 }
             }
+        }
+
+        private static void AddBookmark(Paragraph paragraph, string name, int id)
+        {
+            bool bookmarkExists = paragraph.Descendants<BookmarkStart>().Any(b => b.Name == name);
+
+            if (!bookmarkExists)
+            {
+                var bookmarkStart = new BookmarkStart() { Name = name, Id = id.ToString() };
+                var bookmarkEnd = new BookmarkEnd() { Id = id.ToString() };
+
+                var paraProps = paragraph.GetFirstChild<ParagraphProperties>();
+                if (paraProps != null)
+                {
+                    paraProps.InsertAfterSelf(bookmarkStart);
+                }
+                else
+                {
+                    paragraph.InsertAt(bookmarkStart, 0);
+                }
+
+                bookmarkStart.InsertAfterSelf(bookmarkEnd);
+            }
+        }
+
+
+        private static void AddCrossReference(Paragraph paragraph, string text, string destinationBookmarkName)
+        {
+             var fieldBegin = new FieldChar
+            {
+                FieldCharType = FieldCharValues.Begin
+            };
+
+            var fieldCode = new Run(new FieldCode
+            {
+                Text = $" REF {destinationBookmarkName} \\h "
+            });
+
+            var fieldSeparator = new FieldChar
+            {
+                FieldCharType = FieldCharValues.Separate
+            };
+
+            var fieldText = new Run(new Text
+            {
+                Text = text
+            });
+
+            var fieldEnd = new FieldChar
+            {
+                FieldCharType = FieldCharValues.End
+            };
+
+            var run = new Run();
+            run.Append(fieldBegin, fieldCode, fieldSeparator, fieldText, fieldEnd);
+            paragraph.Append(run);
         }
 
         private static Style GetOrCreateParagraphStyle(StyleDefinitionsPart stylesPart, string styleName)
