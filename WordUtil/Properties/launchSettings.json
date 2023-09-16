@@ -2,7 +2,7 @@
   "profiles": {
     "WordSplitter": {
       "commandName": "Project",
-      "commandLineArgs": "batch -i \"D:\\Dropbox\\Writing\\Manuscripts\\WHLC History Book\\Compilation (Word)\\WHLC History Book.docx\" -o \"D:\\Dropbox\\Writing\\Manuscripts\\WHLC History Book\\Splits (Word)\\\\\" -s \"BookTitle\" -m \"D:\\Dropbox\\Writing\\Manuscripts\\WHLC History Book\\Compilation (Word)\\fontstylemap.txt\""
+      "commandLineArgs": "batch -i \"D:\\Dropbox\\Writing\\Manuscripts\\WHLC History Book\\Compilation (Word)\\WHLC History Book.docx\" -o \"D:\\Dropbox\\Writing\\Manuscripts\\WHLC History Book\\Splits (Word)\\\\\" -s \"PartTitle\" -m \"D:\\Dropbox\\Writing\\Manuscripts\\WHLC History Book\\Compilation (Word)\\fontstylemap.txt\""
     }
   }
 }

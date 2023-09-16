@@ -2,11 +2,8 @@
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Wordprocessing;
-using Microsoft.VisualBasic.FileIO;
-using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
 
 namespace WordUtil
 {
@@ -26,6 +23,15 @@ namespace WordUtil
                 Directory.CreateDirectory(outputDirectory);
             }
 
+            var di = new DirectoryInfo(outputDirectory);
+            foreach (FileInfo fi in di.GetFiles())
+            {
+                if (Path.GetExtension(fi.FullName) == ".docx")
+                {
+                    fi.Delete();
+                }
+            }
+
             using (WordprocessingDocument originalDoc = WordprocessingDocument.Open(fixedSourceFile, false))
             {
                 Body originalBody = originalDoc.MainDocumentPart.Document.Body;
@@ -33,12 +39,13 @@ namespace WordUtil
                 string section = "";
                 string lastSection = "";
                 int counter = 0;
+                var styleNameFixed = styleName.Replace(" ", "");
 
                 foreach (var para in originalBody.Elements<Paragraph>())
                 {
                     var style = para.ParagraphProperties?.ParagraphStyleId?.Val;
 
-                    if (style != null && style.Value.Contains(styleName))
+                    if (style != null && style.Value == styleNameFixed)
                     {
                         section = para.InnerText.Trim();
 
