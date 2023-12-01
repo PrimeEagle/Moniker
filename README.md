@@ -1,5 +1,4 @@
 # Moniker
-<img src="https://github.com/PrimeEagle/Moniker/blob/main/moniker.png?raw=true" width=250 />
 
 A command line tool for Windows for working with Microsoft Word documents.
 
